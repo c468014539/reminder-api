@@ -179,3 +179,7 @@ def delete_reminder(remid: int):
     reminders = [r for r in reminders if r['id'] != remid]
     save_reminders(reminders)
     return {"message": "删除成功"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
