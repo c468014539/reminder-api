@@ -6,13 +6,13 @@ from datetime import datetime
 from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException
+from fastapi import Request
 from pydantic import BaseModel
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseUpload
-from google.auth.transport.requests import Request
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
@@ -42,6 +42,23 @@ class ReminderIn(BaseModel):
 # 响应模型（含 id）
 class Reminder(ReminderIn):
     id: int
+
+
+def get_user_email_from_token(request: Request):
+    from google.oauth2 import id_token
+    from google.auth.transport import requests as grequests
+
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        raise HTTPException(status_code=401, detail="缺少或无效的 Authorization")
+
+    token = auth_header.split(' ')[1]
+    try:
+        idinfo = id_token.verify_oauth2_token(token, grequests.Request())
+        return idinfo['email']
+    except Exception as e:
+        raise HTTPException(status_code=401, detail="无效的 ID token")
+
 
 # 获取 OAuth2 凭证
 def get_credentials():
@@ -100,8 +117,7 @@ def create_new_reminder_file(service, user_email):
     return file_id
 
 # 读取提醒
-def load_reminders() -> List[dict]:
-    user_email = get_user_email()
+def load_reminders(user_email: str) -> List[dict]:
     service = get_drive_service()
     settings = load_settings()
     if user_email not in settings:
@@ -123,8 +139,7 @@ def load_reminders() -> List[dict]:
     return reminders
 
 # 保存提醒
-def save_reminders(reminders: List[dict]):
-    user_email = get_user_email()
+def save_reminders(reminders: List[dict], user_email: str):
     service = get_drive_service()
     settings = load_settings()
     if user_email not in settings:
@@ -139,37 +154,41 @@ def save_reminders(reminders: List[dict]):
 
 # FastAPI 接口
 @app.get("/reminders", response_model=List[Reminder])
-def get_reminders():
-    return load_reminders()
+def get_reminders(request: Request):
+    user_email = get_user_email_from_token(request)
+    return load_reminders(user_email)
 
 @app.post("/reminders", response_model=Reminder)
-def add_reminder(reminder: ReminderIn):
-    reminders = load_reminders()
+def add_reminder(reminder: ReminderIn, request: Request):
+    user_email = get_user_email_from_token(request)
+    reminders = load_reminders(user_email)
     next_id = max((r['id'] for r in reminders), default=0) + 1
     new = reminder.dict()
     new['id'] = next_id
     if 'description' not in new or new['description'] is None:
         new['description'] = ''
     reminders.append(new)
-    save_reminders(reminders)
+    save_reminders(reminders, user_email)
     return new
 
 @app.put("/reminders/{remid}", response_model=Reminder)
-def update_reminder(remid: int, updated: ReminderIn):
-    reminders = load_reminders()
+def update_reminder(remid: int, updated: ReminderIn, request: Request):
+    user_email = get_user_email_from_token(request)
+    reminders = load_reminders(user_email)
     for idx, r in enumerate(reminders):
         if r['id'] == remid:
             reminders[idx].update(updated.dict())
             reminders[idx]['id'] = remid
-            save_reminders(reminders)
+            save_reminders(reminders, user_email)
             return reminders[idx]
     raise HTTPException(status_code=404, detail="未找到指定提醒")
 
 @app.delete("/reminders/{remid}")
-def delete_reminder(remid: int):
-    reminders = load_reminders()
+def delete_reminder(remid: int, request: Request):
+    user_email = get_user_email_from_token(request)
+    reminders = load_reminders(user_email)
     reminders = [r for r in reminders if r['id'] != remid]
-    save_reminders(reminders)
+    save_reminders(reminders, user_email)
     return {"message": "删除成功"}
 
 if __name__ == "__main__":
