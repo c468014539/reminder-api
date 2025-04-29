@@ -5,14 +5,6 @@ import io
 from datetime import datetime
 from typing import List, Optional
 
-import tkinter as tk
-import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
-from tkinter import messagebox, Toplevel
-
-import pystray
-from PIL import Image, ImageDraw
-
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from google.oauth2.credentials import Credentials
@@ -20,7 +12,6 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseUpload
-from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
